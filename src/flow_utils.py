@@ -390,31 +390,128 @@ class TransferSpectra(tfb.Bijector):
 
 class ComplexScale(tfb.Bijector):
 
-    def __init__(self, shape, dtype=tf.complex64,  validate_args=False, forward_min_event_ndims=3, name='complexsacle/'):
+    def __init__(self, shape, dtype=tf.complex64,  validate_args=False, forward_min_event_ndims=3, name='complexscale/'):
         super().__init__(
           validate_args=validate_args, forward_min_event_ndims=forward_min_event_ndims, name=name) #Forward_min_events is set to default at 3D
         
+        self.shape = shape
+        self.nc = np.prod(shape)**(1/3.)
         self.rsigma = tf.Variable(tf.ones(shape), name=name+"r")
         self.isigma = tf.Variable(tf.zeros(shape), name=name+"i")
         #self.sigma = tf.Variable(tf.cast(tf.ones(shape), dtype), name=name)
        
     def _forward(self, x, dtype=tf.float32, cdtype=tf.complex64):
         xk = tf.signal.fft3d(tf.cast(x, cdtype))
+        xk = xk/self.nc**1.5
         sigma = tf.complex(self.rsigma, self.isigma)
         xk = xk * sigma
+        xk = xk*self.nc**1.5
         x = tf.cast(tf.signal.ifft3d(xk), dtype)
         return x 
 
     def _inverse(self, y, dtype=tf.float32, cdtype=tf.complex64):
         yk = tf.signal.fft3d(tf.cast(y, cdtype))
+        yk = yk/self.nc**1.5
         sigma = tf.complex(self.rsigma, self.isigma)
         yk = yk / sigma
+        yk = yk*self.nc**1.5
         y = tf.cast(tf.signal.ifft3d(yk), dtype)
         return y
 
     def _forward_log_det_jacobian(self, x):
 #         return tf.math.log(tf.abs(tfk))
         sigma = tf.complex(self.rsigma, self.isigma)
+        return tf.reduce_sum(tf.math.log(tf.abs(sigma)))
+
+
+class ComplexShift(tfb.Bijector):
+
+    def __init__(self, shape, dtype=tf.complex64,  validate_args=False, forward_min_event_ndims=3, name='complexshift/'):
+        super().__init__(
+          validate_args=validate_args, forward_min_event_ndims=forward_min_event_ndims, name=name) #Forward_min_events is set to default at 3D
+        self.shape = shape
+        self.nc = np.prod(shape)**(1/3.)
+        self.rloc = tf.Variable(tf.zeros(shape), name=name+"r")
+        self.iloc = tf.Variable(tf.zeros(shape), name=name+"i")
+        #self.loc = tf.Variable(tf.cast(tf.ones(shape), dtype), name=name)
+       
+    def _forward(self, x, dtype=tf.float32, cdtype=tf.complex64):      
+        xk = tf.signal.fft3d(tf.cast(x, cdtype))
+        xk = xk/self.nc**1.5
+        loc = tf.complex(self.rloc, self.iloc)
+        xk = xk + loc
+        xk = xk*self.nc**1.5
+        y = tf.cast(tf.signal.ifft3d(xk), dtype)
+        return y
+
+    def _inverse(self, y, dtype=tf.float32, cdtype=tf.complex64):
+        yk = tf.signal.fft3d(tf.cast(y, cdtype))
+        yk = yk/self.nc**1.5
+        loc = tf.complex(self.rloc, self.iloc)
+        yk = yk - loc
+        yk = yk*self.nc**1.5
+        x = tf.cast(tf.signal.ifft3d(yk), dtype)
+        return x
+
+    def _forward_log_det_jacobian(self, x):
+        return tf.constant(1.)
+
+
+class RealShift(tfb.Bijector):
+
+    def __init__(self, shape, dtype=tf.complex64,  validate_args=False, forward_min_event_ndims=3, name='realshift/'):
+        super().__init__(
+          validate_args=validate_args, forward_min_event_ndims=forward_min_event_ndims, name=name) #Forward_min_events is set to default at 3D        
+        self.loc = tf.Variable(tf.zeros(shape), name=name+"loc")
+       
+    def _forward(self, x, dtype=tf.float32, cdtype=tf.complex64):
+        y = x + self.loc
+        return y
+
+    def _inverse(self, y, dtype=tf.float32, cdtype=tf.complex64):
+        x = y - self.loc
+        return x
+
+    def _forward_log_det_jacobian(self, x):
+        return tf.constant(1.)
+
+
+class ComplexScaleandShift(tfb.Bijector):
+
+    def __init__(self, shape, dtype=tf.complex64,  validate_args=False, forward_min_event_ndims=3, name='complexscaleandshift/'):
+        super().__init__(
+          validate_args=validate_args, forward_min_event_ndims=forward_min_event_ndims, name=name) #Forward_min_events is set to default at 3D
+        
+        self.shape = shape
+        self.nc = np.prod(shape)**(1/3.)
+        self.rscale = tf.Variable(tf.ones(shape), name=name+"rscale")
+        self.iscale = tf.Variable(tf.zeros(shape), name=name+"iscale")
+        self.rloc = tf.Variable(tf.zeros(shape), name=name+"rloc")
+        self.iloc = tf.Variable(tf.zeros(shape), name=name+"iloc")
+        #self.scale = tf.Variable(tf.cast(tf.ones(shape), dtype), name=name)
+       
+    def _forward(self, x, dtype=tf.float32, cdtype=tf.complex64):
+        xk = tf.signal.fft3d(tf.cast(x, cdtype))
+        xk = xk/self.nc**1.5
+        scale = tf.complex(self.rscale, self.iscale)
+        loc = tf.complex(self.rloc, self.iloc)
+        xk = xk*scale + loc
+        xk = xk*self.nc**1.5
+        x = tf.cast(tf.signal.ifft3d(xk), dtype)
+        return x 
+
+    def _inverse(self, y, dtype=tf.float32, cdtype=tf.complex64):
+        yk = tf.signal.fft3d(tf.cast(y, cdtype))
+        yk = yk/self.nc**1.5
+        scale = tf.complex(self.rscale, self.iscale)
+        loc = tf.complex(self.rloc, self.iloc)
+        yk = (yk-loc)/scale
+        yk = yk*self.nc**1.5
+        y = tf.cast(tf.signal.ifft3d(yk), dtype)
+        return y
+
+    def _forward_log_det_jacobian(self, x):
+        sigma = tf.complex(self.rscale, self.iscale)
         return tf.reduce_sum(tf.math.log(tf.abs(sigma)))
 
 
