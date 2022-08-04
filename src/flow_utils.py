@@ -314,13 +314,15 @@ def fftk(shape, boxsize, symmetric=True, finite=False, dtype=np.float64):
 class TransferSpectra(tfb.Bijector):
 
     def __init__(self, nc, nknot, x=None, y=None, dy=None, y0=None, k=None, normalize=True, 
-                 positivetf=True, linspace=True, zeromode=True, 
+                 positivetf=True, linspace=True, zeromode=True, normed=False, 
                  forward_min_event_ndims=3, validate_args=False, name='treconv/'):
         super().__init__(
           validate_args=validate_args,
           forward_min_event_ndims=forward_min_event_ndims, name=name) #Forward_min_events is set to default at 3D
         
         #setup k field
+        self.nc = nc
+        self.normed = normed
         if k is None:
             kvec = fftk((nc, nc, nc),  boxsize=1, symmetric=False)
             delkv = kvec[0].flatten()[1] - kvec[0].flatten()[0]
@@ -368,15 +370,19 @@ class TransferSpectra(tfb.Bijector):
         
     def _forward(self, x, dtype=tf.float32, cdtype=tf.complex64):
         xk = tf.signal.fft3d(tf.cast(x, cdtype))
+        if self.normed: xk = xk/self.nc**1.5
         tfk = self.get_tfk()
         xk = xk * tf.cast(tfk, cdtype)
+        if self.normed: xk = xk*self.nc**1.5
         x = tf.cast(tf.signal.ifft3d(xk), dtype)
         return x 
 
     def _inverse(self, y, dtype=tf.float32, cdtype=tf.complex64):
         yk = tf.signal.fft3d(tf.cast(y, cdtype))
+        if self.normed: yk = yk/self.nc**1.5
         tfk = self.get_tfk()
         yk = yk / tf.cast(tfk, cdtype)
+        if self.normed: yk = yk/self.nc**1.5
         y = tf.cast(tf.signal.ifft3d(yk), dtype)
         return y
 
